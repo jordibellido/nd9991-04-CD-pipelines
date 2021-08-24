@@ -1,0 +1,23 @@
+version: 2.1
+
+jobs:
+  configure_infrastructure:
+    docker:
+      - image: python:3.7-alpine3.11
+    steps:
+      - checkout
+      - add_ssh_keys:
+          fingerprints: ["4b:56:1e:1a:6d:04:06:ce:88:fb:2e:de:73:de:8e:04"]
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --update ansible
+      - run:
+          name: Configure the already-deployed EC2 instance
+          command: |
+            ansible-playbook --inventory-file inventory --diff --verbose main.yml
+
+workflows:
+  exercise19-config_and_deployment:
+    jobs:
+      - configure_infrastructure

@@ -1,6 +1,6 @@
 ---
-- name: Exercise #1
-  hosts: localhost
-
+- name: Exercise 19 for setting up a web server in an EC2 instance
+  hosts: all
+  user: ubuntu
   roles:
-   - print
+    - setup

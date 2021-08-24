@@ -1,0 +1,46 @@
+---
+- name: Update APT cache and upgrade packages
+  become: yes
+  apt:
+    update_cache: yes
+    upgrade: 'yes'
+
+- name: Remove dependencies that are no longer required
+  become: yes
+  apt:
+    autoremove: yes
+
+- name: Install dependencies
+  become: yes
+  apt:
+    name: ["nodejs", "npm"]
+    state: latest
+
+- name: Install pm2
+  become: yes
+  npm:
+    name: pm2
+    global: yes
+    production: yes
+    state: present
+  when: not ansible_check_mode
+
+- name: Create www directory
+  file:
+    path: ~/web
+    state: directory
+    mode: 0775
+    owner: ubuntu
+    group: ubuntu
+
+- name: Copy index test page
+  template:
+    src: "files/index.js"
+    dest: "~/web/index.js"
+    mode: 0440
+    owner: ubuntu
+    group: ubuntu
+
+- name: Executing node
+  shell: |
+    pm2 start ~/web/index.js -f
