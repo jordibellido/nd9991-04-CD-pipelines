@@ -1,0 +1,31 @@
+version: 2.1
+
+commands:
+  destroy_environment:
+    steps:
+      - run:
+          name: Destroy an environment already deployed
+          command: |
+            aws cloudformation delete-stack --stack-name exercise25-rollback
+          when: on_fail
+
+jobs:
+  create_infrastructure:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Create a new CloudFormation stack from a template
+          command: |
+            aws cloudformation deploy --stack-name exercise25-rollback --template-file template.yml
+      - run:
+          name: Simulate an error to cause the job to fail
+          command: |
+            return 1
+      - destroy_environment
+
+workflows:
+  exercise25-rollback:
+    jobs:
+      - create_infrastructure
