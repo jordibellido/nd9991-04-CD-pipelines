@@ -1,0 +1,78 @@
+version: 2.1
+
+jobs:
+  create_and_deploy_front_end:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Create a new CloudFormation stack from a template - S3 bucket
+          command: |
+            aws cloudformation deploy --template-file bucket.yml --stack-name "stack-${CIRCLE_WORKFLOW_ID:0:7}" --parameter-overrides NAME="stack-${CIRCLE_WORKFLOW_ID:0:7}"
+      - run:
+          name: Copy the production files to the new S3 bucket
+          command: |
+             aws s3 sync . s3://"stack-${CIRCLE_WORKFLOW_ID:0:7}" --delete
+
+  get_last_deployment_id:
+    docker:
+      - image: amazon/aws-cli
+    environment:
+      WORKSPACE_ABS_PATH: /tmp/workspace
+    steps:
+      - run:
+          name: Install tar and gzip packages
+          command: |
+            yum --assumeyes install tar gzip
+      - run: mkdir --parents /tmp/workspace
+      - run:
+          name: Get which pipeline ID was responsible for the last successful production release
+          command: |
+            aws cloudformation list-exports --query "Exports[?Name==\`PipelineID\`].Value" --no-paginate --output text | tee "${WORKSPACE_ABS_PATH}/echo-pipeline-id"
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - echo-pipeline-id
+
+  promote_to_production:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Promote the CloudFormation stack to production
+          command: |
+            aws cloudformation deploy --template-file cloudfront.yml --stack-name production-distro --parameter-overrides PipelineID="stack-${CIRCLE_WORKFLOW_ID:0:7}"
+
+  clean_up_old_front_end:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - run:
+          name: Install tar and gzip packages
+          command: |
+            yum --assumeyes install tar gzip
+      - checkout
+      - attach_workspace:
+          at: /tmp/workspace
+      - run: echo "export PreviousPipelineID=$(cat /tmp/workspace/echo-pipeline-id)" >> $BASH_ENV
+      - run: source $BASH_ENV
+      - run: aws s3 rm "s3://${PreviousPipelineID}" --recursive
+      - run: aws cloudformation delete-stack --stack-name "${PreviousPipelineID}"
+
+workflows:
+  exercise28-promote_to_production:
+    jobs:
+      - create_and_deploy_front_end
+      - get_last_deployment_id
+
+      # Requiring get_last_deployment_id is not necessary, but allow us to fail as early as possible
+      - promote_to_production:
+          requires:
+            - get_last_deployment_id
+            - create_and_deploy_front_end
+      - clean_up_old_front_end:
+          requires:
+            - get_last_deployment_id
+            - promote_to_production
